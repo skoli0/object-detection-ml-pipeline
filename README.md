@@ -84,10 +84,17 @@ uv --version
 ## 4) Local environment setup
 
 ```bash
-git init
+git clone git@github.com:skoli0/object-detection-ml-pipeline.git
+cd object-detection-ml-pipeline
 uv venv
 source .venv/bin/activate
 uv pip install -r requirements.txt
+```
+
+Discover Makefile shortcuts (the default `make` target prints the same list):
+
+```bash
+make help
 ```
 
 Configure local env:
@@ -128,14 +135,72 @@ make infra-up
 Services:
 - MinIO: <http://localhost:9001>
 - PostgreSQL: localhost:5432
-- MLflow: <http://localhost:5001>
-- Prefect API: <http://localhost:4200>
+- MLflow: <http://localhost:5000>
+- Prefect UI: <http://localhost:4200> — requires ``prefect`` in Compose + ``PREFECT_API_URL=http://127.0.0.1:4200/api``. Server image is **Prefect 3** (matches ``prefect`` in ``requirements.txt``). Ephemeral flows (no ``PREFECT_API_URL``) never appear here.
 - Redpanda: localhost:9092
 
 Create MinIO bucket:
 
 ```bash
 make minio-bootstrap
+```
+
+### Cleanup: stop services, remove containers, Kubernetes
+
+List available automation targets:
+
+```bash
+make help
+```
+
+**Podman Compose (platform containers)**
+
+- **Stop containers but keep data** (named volumes for Postgres and MinIO remain for next `make infra-up`):
+
+  ```bash
+  make infra-down
+  ```
+
+- **Stop and remove containers plus Compose volumes** (full reset of local MinIO/Postgres data; Redpanda state is also cleared):
+
+  ```bash
+  make infra-clean
+  ```
+
+  Equivalent manual commands from this directory: `podman-compose down` and `podman-compose down -v --remove-orphans`.
+
+**Local FastAPI server**
+
+- If you ran `make serve-local`, stop it with **Ctrl+C** in that terminal.
+
+**Podman machine (VM that runs the Linux engine on macOS)**
+
+- Stop the VM when you are done for the day (frees CPU/RAM):
+
+  ```bash
+  podman machine stop
+  ```
+
+  Start again before the next `make infra-up`: `podman machine start`.
+
+**Kubernetes (kind)**
+
+- Delete the whole local cluster created by `make k8s-create`:
+
+  ```bash
+  kind delete cluster --name mlops-local
+  ```
+
+- If you keep kind running but want to remove only this project’s resources:
+
+  ```bash
+  kubectl delete namespace mlops-demo --ignore-not-found=true
+  ```
+
+**Helm release** (if you used section 13)
+
+```bash
+helm uninstall mlops-demo -n mlops-demo 2>/dev/null || true
 ```
 
 ---
@@ -192,7 +257,7 @@ Flow steps:
 
 ## 10) Model registry usage (MLflow)
 
-- Open MLflow UI: <http://localhost:5001>
+- Open MLflow UI: <http://localhost:5000>
 - Promote models by stage (`Staging` -> `Production`) in UI.
 
 Command-line registration helper:
@@ -360,9 +425,12 @@ make k8s-deploy
 
 - **Podman socket issues**: restart `podman machine`.
 - **MLflow can't write artifacts**: verify MinIO bucket and env vars.
+- **MLflow URL / port mismatches**: the UI listens on whatever you set as `MLFLOW_PORT` and `MLFLOW_TRACKING_URI` in `.env` (see `.env.example`). They must agree (e.g. both use **5000**).
+- **Cannot bind port `5000` on macOS?** Apple often uses TCP **5000** for **Air Play Receiver**. Turn it off under *System Settings → General → AirDrop & Handoff* (wording varies by macOS), or set `MLFLOW_PORT` / `MLFLOW_TRACKING_URI` to another free port (e.g. **5050**) consistently in `.env`.
 - **K8s image pull fails**: load image into kind (`kind load docker-image ...`) or use local registry.
 - **Grafana empty dashboards**: check Prometheus scrape target `/metrics`.
 - **Redpanda connection errors**: verify `localhost:9092` mapped and broker up.
+- **Prefect dashboard empty**: ensure the `prefect` container is running, ``PREFECT_API_URL`` matches the server in ``.env``, and the **client major version** matches the **server image** (both 3.x). After changing the server image, run ``make infra-reset`` and re-run a flow.
 
 ---
 

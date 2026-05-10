@@ -1,7 +1,9 @@
 version: "3.9"
+# Image pins refreshed periodically; upgrading Postgres major may require `make infra-clean`
+# (wiping volumes) if the existing data directory is incompatible.
 services:
   postgres:
-    image: docker.io/postgres:15-alpine
+    image: docker.io/postgres:17-alpine
     container_name: mlops-postgres
     environment:
       POSTGRES_USER: mlops
@@ -13,7 +15,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   minio:
-    image: quay.io/minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: mlops-minio
     command: server /data --console-address ":9001"
     environment:
@@ -26,7 +28,8 @@ services:
       - minio_data:/data
 
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.16.2
+    # `-full` includes Postgres + S3 extras; see https://github.com/mlflow/mlflow/blob/master/docker/README.md
+    image: ghcr.io/mlflow/mlflow:v3.12.0-full
     container_name: mlops-mlflow
     depends_on:
       - postgres
@@ -36,20 +39,33 @@ services:
       AWS_ACCESS_KEY_ID: minio
       AWS_SECRET_ACCESS_KEY: minio123
       GUNICORN_CMD_ARGS: --bind 0.0.0.0:5000
-    command: >
-      sh -c "pip install psycopg2-binary boto3 && mlflow server --backend-store-uri postgresql://mlops:mlops@postgres:5432/mlflow --default-artifact-root s3://mlflow/ --host 0.0.0.0 --port 5000"
+    command:
+      - mlflow
+      - server
+      - --backend-store-uri
+      - postgresql://mlops:mlops@postgres:5432/mlflow
+      - --default-artifact-root
+      - s3://mlflow/
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "5000"
+    # Host <- container:5000. Default 5000: macOS often binds TCP 5000 (Air Play Receiver).
     ports:
       - "${MLFLOW_PORT:-5000}:5000"
 
-  # prefect:
-  #   image: docker.io/prefecthq/prefect:2.20.14-python3.11
-  #   container_name: mlops-prefect
-  #   command: prefect server start --host 0.0.0.0
-  #   ports:
-  #     - "4200:4200"
+  prefect:
+    # Match the Python client's major (3.x); older 2.x server + 3.x client yields an empty UI.
+    image: docker.io/prefecthq/prefect:3.7.0-python3.12
+    container_name: mlops-prefect
+    command: prefect server start --host 0.0.0.0
+    volumes:
+      - prefect_data:/root/.prefect
+    ports:
+      - "4200:4200"
 
   redpanda:
-    image: docker.redpanda.com/redpandadata/redpanda:v24.2.12
+    image: docker.redpanda.com/redpandadata/redpanda:v25.3.11
     container_name: mlops-redpanda
     command:
       - redpanda
@@ -72,3 +88,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  prefect_data:

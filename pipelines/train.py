@@ -10,7 +10,7 @@ from ultralytics import YOLO
 def train() -> None:
     # Load local .env so training works even in fresh shells.
     load_dotenv()
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment("yolo-local-demo")
 
