@@ -1,0 +1,31 @@
+schema: '2.0'
+stages:
+  generate_data:
+    cmd: .venv/bin/python scripts/generate_dataset.py
+    deps:
+    - path: scripts/generate_dataset.py
+      hash: md5
+      md5: 32569e668393029dad8187f5360f7d28
+      size: 1290
+    outs:
+    - path: datasets/processed/data.yaml
+      hash: md5
+      md5: cc8dea27ad512cd73e875a082ca36197
+      size: 65
+    - path: datasets/raw
+      hash: md5
+      md5: 6c25f3a3f3eae21b557f780e8ef7b77b.dir
+      size: 57161
+      nfiles: 24
+  validate_data:
+    cmd: .venv/bin/python scripts/validate_data.py
+    deps:
+    - path: datasets/raw
+      hash: md5
+      md5: 6c25f3a3f3eae21b557f780e8ef7b77b.dir
+      size: 57161
+      nfiles: 24
+    - path: scripts/validate_data.py
+      hash: md5
+      md5: 0dd2d401b394bc8a181b4fc7dc069c21
+      size: 611

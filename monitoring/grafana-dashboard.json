@@ -1,0 +1,14 @@
+{
+  "title": "MLOps Demo API",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Request Rate",
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total[1m]))"
+        }
+      ]
+    }
+  ]
+}

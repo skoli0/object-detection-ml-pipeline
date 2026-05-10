@@ -1,0 +1,39 @@
+name: ci-cd
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  lint-test-train:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v3
+      - name: Install deps
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python -r requirements.txt
+      - name: Lint
+        run: .venv/bin/ruff check .
+      - name: Tests
+        run: .venv/bin/pytest -q
+      - name: Generate data
+        run: .venv/bin/python scripts/generate_dataset.py
+      - name: Validate data
+        run: .venv/bin/python scripts/validate_data.py
+
+  build-image:
+    runs-on: ubuntu-latest
+    needs: lint-test-train
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image with Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman build -t mlops-api:ci -f Containerfile .

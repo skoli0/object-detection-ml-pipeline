@@ -1,0 +1,8 @@
+namespace: mlops-demo
+image:
+  repository: localhost/mlops-api
+  tag: latest
+  pullPolicy: IfNotPresent
+service:
+  port: 80
+  targetPort: 8000

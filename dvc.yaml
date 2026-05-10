@@ -1,0 +1,13 @@
+stages:
+  generate_data:
+    cmd: .venv/bin/python scripts/generate_dataset.py
+    deps:
+      - scripts/generate_dataset.py
+    outs:
+      - datasets/raw
+      - datasets/processed/data.yaml
+  validate_data:
+    cmd: .venv/bin/python scripts/validate_data.py
+    deps:
+      - datasets/raw
+      - scripts/validate_data.py

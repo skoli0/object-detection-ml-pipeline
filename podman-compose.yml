@@ -1,0 +1,74 @@
+version: "3.9"
+services:
+  postgres:
+    image: docker.io/postgres:15-alpine
+    container_name: mlops-postgres
+    environment:
+      POSTGRES_USER: mlops
+      POSTGRES_PASSWORD: mlops
+      POSTGRES_DB: mlflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: mlops-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.16.2
+    container_name: mlops-mlflow
+    depends_on:
+      - postgres
+      - minio
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minio
+      AWS_SECRET_ACCESS_KEY: minio123
+      GUNICORN_CMD_ARGS: --bind 0.0.0.0:5000
+    command: >
+      sh -c "pip install psycopg2-binary boto3 && mlflow server --backend-store-uri postgresql://mlops:mlops@postgres:5432/mlflow --default-artifact-root s3://mlflow/ --host 0.0.0.0 --port 5000"
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+
+  # prefect:
+  #   image: docker.io/prefecthq/prefect:2.20.14-python3.11
+  #   container_name: mlops-prefect
+  #   command: prefect server start --host 0.0.0.0
+  #   ports:
+  #     - "4200:4200"
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.12
+    container_name: mlops-redpanda
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - "512M"
+      - --reserve-memory
+      - "0M"
+      - --check=false
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://localhost:9092
+    ports:
+      - "9092:9092"
+
+volumes:
+  postgres_data:
+  minio_data:
