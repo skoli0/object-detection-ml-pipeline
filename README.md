@@ -132,12 +132,48 @@ mlops-demo/
 make infra-up
 ```
 
-Services:
-- MinIO: <http://localhost:9001>
-- PostgreSQL: localhost:5432
-- MLflow: <http://localhost:5000>
-- Prefect UI: <http://localhost:4200> — requires ``prefect`` in Compose + ``PREFECT_API_URL=http://127.0.0.1:4200/api``. Server image is **Prefect 3** (matches ``prefect`` in ``requirements.txt``). Ephemeral flows (no ``PREFECT_API_URL``) never appear here.
-- Redpanda: localhost:9092
+### URLs to open (local defaults)
+
+Use these after `make infra-up`. For the browser console and OpenAPI, also run `make serve-local` (API on **8000**).
+
+If you change **`MLFLOW_PORT`** / **`MLFLOW_TRACKING_URI`** in `.env` (e.g. **5050** when macOS AirPlay uses **5000**), open MLflow on that host port instead of **5000**.
+
+**Infra (Podman Compose — browser / UIs)**
+
+| Service | URL |
+|--------|-----|
+| MLflow UI | <http://127.0.0.1:5000/> (or `http://127.0.0.1:${MLFLOW_PORT:-5000}/` from `.env`) |
+| Prefect UI | <http://127.0.0.1:4200/> |
+| MinIO Console | <http://127.0.0.1:9001/> |
+
+Prefect: keep **`PREFECT_API_URL=http://127.0.0.1:4200/api`** in `.env` when using the Compose server; image is **Prefect 3** to match the Python client. Without that URL, ephemeral runs do not appear in the Prefect UI.
+
+**Infra (clients / non-browser)**
+
+| Service | Address |
+|--------|---------|
+| MinIO S3 API | `http://127.0.0.1:9000` (same as `MLFLOW_S3_ENDPOINT_URL` in `.env`) |
+| PostgreSQL | `127.0.0.1:5432` |
+| Prefect REST API | <http://127.0.0.1:4200/api> |
+| Redpanda (Kafka) | `127.0.0.1:9092` |
+
+**FastAPI (`make serve-local`)**
+
+| What | URL |
+|------|-----|
+| Pipeline console | <http://127.0.0.1:8000/ui> |
+| Swagger UI | <http://127.0.0.1:8000/docs> |
+| ReDoc | <http://127.0.0.1:8000/redoc> |
+| OpenAPI schema | <http://127.0.0.1:8000/openapi.json> |
+| Health | <http://127.0.0.1:8000/health> |
+| Prometheus metrics | <http://127.0.0.1:8000/metrics> |
+| Pipeline UI config (JSON) | <http://127.0.0.1:8000/api/pipeline/config> |
+| List pipeline jobs (JSON) | <http://127.0.0.1:8000/api/pipeline/jobs> |
+| Single pipeline job (JSON) | <http://127.0.0.1:8000/api/pipeline/jobs/{job_id}> |
+| Create pipeline job | `POST` <http://127.0.0.1:8000/api/pipeline/jobs> |
+| Inference | `POST` <http://127.0.0.1:8000/predict> |
+
+**Kubernetes** (after `make k8s-deploy`): ports depend on manifests; use `kubectl get svc -n mlops-demo` and `kubectl port-forward` as needed for Grafana/Prometheus/Loki.
 
 Create MinIO bucket:
 
@@ -257,7 +293,7 @@ Flow steps:
 
 ## 10) Model registry usage (MLflow)
 
-- Open MLflow UI: <http://localhost:5000>
+- Open MLflow UI: <http://127.0.0.1:5000/> (or the port from `.env`; see **§6 URLs to open**).
 - Promote models by stage (`Staging` -> `Production`) in UI.
 
 Command-line registration helper:
@@ -272,8 +308,13 @@ python scripts/register_model.py --run-id <RUN_ID> --name yolo-barcode-detector
 
 ```bash
 make serve-local
-# test
-curl -X POST "http://localhost:8000/predict" -F "file=@datasets/raw/images/sample_0.jpg"
+```
+
+- **Pipeline console:** <http://127.0.0.1:8000/ui> — download web images, validate, train, or run the full Prefect flow; REST details in <http://127.0.0.1:8000/docs> (see **§6 URLs to open**).
+- **Predict (curl):**
+
+```bash
+curl -X POST "http://127.0.0.1:8000/predict" -F "file=@datasets/raw/images/sample_0.jpg"
 ```
 
 ---
@@ -425,12 +466,9 @@ make k8s-deploy
 
 - **Podman socket issues**: restart `podman machine`.
 - **MLflow can't write artifacts**: verify MinIO bucket and env vars.
-- **MLflow URL / port mismatches**: the UI listens on whatever you set as `MLFLOW_PORT` and `MLFLOW_TRACKING_URI` in `.env` (see `.env.example`). They must agree (e.g. both use **5000**).
-- **Cannot bind port `5000` on macOS?** Apple often uses TCP **5000** for **Air Play Receiver**. Turn it off under *System Settings → General → AirDrop & Handoff* (wording varies by macOS), or set `MLFLOW_PORT` / `MLFLOW_TRACKING_URI` to another free port (e.g. **5050**) consistently in `.env`.
 - **K8s image pull fails**: load image into kind (`kind load docker-image ...`) or use local registry.
 - **Grafana empty dashboards**: check Prometheus scrape target `/metrics`.
 - **Redpanda connection errors**: verify `localhost:9092` mapped and broker up.
-- **Prefect dashboard empty**: ensure the `prefect` container is running, ``PREFECT_API_URL`` matches the server in ``.env``, and the **client major version** matches the **server image** (both 3.x). After changing the server image, run ``make infra-reset`` and re-run a flow.
 
 ---
 

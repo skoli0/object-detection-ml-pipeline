@@ -2,6 +2,8 @@ SHELL := /bin/bash
 VENV := .venv
 PY := $(VENV)/bin/python
 UV := uv
+# Re-run `uv pip install` when requirements.txt changes (see $(PIP_STAMP)).
+PIP_STAMP := $(VENV)/.requirements-installed
 
 # Plain `make` runs the full local stack + data + train + tests (see `all`).
 .DEFAULT_GOAL := all
@@ -17,17 +19,22 @@ COMPOSE_CONTAINER_NAMES := mlops-postgres mlops-minio mlops-mlflow mlops-prefect
 .PHONY: all env help setup podman-ready infra-up infra-reset infra-down infra-clean infra-wait prefect-wait minio-bootstrap dvc-bootstrap data-generate data-validate dvc-init dvc-track train pipeline-run serve-local k8s-create k8s-deploy test lint
 
 help: ## List all Makefile targets
-	@grep -E '^[a-zA-Z0-9_.-]+:.*?## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@awk 'BEGIN {FS = ":.*##";} /^[a-zA-Z0-9_.-]+:.*##/ { sub(/^ +/, "", $$2); printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 }' "$(firstword $(MAKEFILE_LIST))" | sort
 
 $(PY):
 	@if [ -d "$(VENV)" ] && [ ! -f "$(VENV)/pyvenv.cfg" ]; then \
 		echo "Invalid $(VENV) found, recreating..."; \
 		rm -rf "$(VENV)"; \
 	fi
-	$(UV) venv --seed $(VENV)
-	$(UV) pip install --python $(PY) -r requirements.txt
+	@if [ ! -x "$(PY)" ]; then \
+		$(UV) venv --seed $(VENV); \
+	fi
 
-setup: $(PY) ## Create venv (uv) and install Python dependencies
+$(PIP_STAMP): requirements.txt $(PY)
+	$(UV) pip install --python $(PY) -r requirements.txt
+	@touch "$(PIP_STAMP)"
+
+setup: $(PIP_STAMP) ## Create venv (uv) and install Python dependencies
 
 # Full local path: env file, venv, Compose, MinIO bucket, DVC data stages, Prefect flow, pytest.
 all: env setup infra-up minio-bootstrap infra-wait prefect-wait dvc-bootstrap dvc-track pipeline-run test ## End-to-end local build (default goal for `make`)
@@ -103,10 +110,10 @@ prefect-wait: ## Poll Prefect API until it answers (used by `make all`)
 	done; \
 	echo "Warning: Prefect API not ready; dashboard may stay empty until the server starts." >&2
 
-data-generate: $(PY) ## Generate synthetic dataset under datasets/
+data-generate: $(PIP_STAMP) ## Generate synthetic dataset under datasets/
 	$(PY) scripts/generate_dataset.py
 
-data-validate: $(PY) ## Run dataset validation checks
+data-validate: $(PIP_STAMP) ## Run dataset validation checks
 	$(PY) scripts/validate_data.py
 
 dvc-init: ## Initialize Git (if needed) and DVC in this directory
@@ -121,17 +128,17 @@ dvc-bootstrap: ## Run dvc-init when .dvc is missing (used by `make all`)
 		$(MAKE) dvc-init; \
 	fi
 
-dvc-track: $(PY) ## Run DVC pipeline for data stages and stage lockfile updates
+dvc-track: $(PIP_STAMP) ## Run DVC pipeline for data stages and stage lockfile updates
 	dvc repro generate_data validate_data
 	git add dvc.yaml dvc.lock datasets/.gitignore datasets/processed/.gitignore || true
 
-train: $(PY) ## Train YOLOv8 via pipelines.train
+train: $(PIP_STAMP) ## Train YOLOv8 via pipelines.train
 	$(PY) -m pipelines.train
 
-pipeline-run: $(PY) ## Run Prefect flow (pipelines.prefect_flow)
+pipeline-run: $(PIP_STAMP) ## Run Prefect flow (pipelines.prefect_flow)
 	$(PY) -m pipelines.prefect_flow
 
-serve-local: $(PY) ## Run FastAPI app with uvicorn on :8000
+serve-local: $(PIP_STAMP) ## Run FastAPI app with uvicorn on :8000
 	$(VENV)/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 k8s-create: ## Create local kind cluster (mlops-local)
@@ -141,8 +148,8 @@ k8s-deploy: ## Apply Kubernetes manifests under kubernetes/base
 	kubectl apply -f kubernetes/base/namespace.yaml
 	kubectl apply -k kubernetes/base
 
-test: $(PY) ## Run pytest
+test: $(PIP_STAMP) ## Run pytest
 	$(VENV)/bin/pytest -q
 
-lint: $(PY) ## Run ruff linter
+lint: $(PIP_STAMP) ## Run ruff linter
 	$(VENV)/bin/ruff check .
